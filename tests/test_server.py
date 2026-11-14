@@ -63,6 +63,7 @@ def test_registered_tools():
         "get_system_info",
         "get_system_stations",
         "get_system_factions",
+        "get_item_prices",
     }
 
 

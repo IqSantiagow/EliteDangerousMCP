@@ -3,7 +3,7 @@ import math
 import pytest
 import requests
 
-from src.edsm.edsm import EdsmClient
+from src.apis.edsm import EdsmClient
 
 SOL = {
     "name": "Sol",
@@ -42,7 +42,9 @@ class FakeSession:
         self.responses = {}
 
     def get(self, url, params=None, headers=None, timeout=None):
-        self.calls.append({"url": url, "params": params, "headers": headers, "timeout": timeout})
+        self.calls.append(
+            {"url": url, "params": params, "headers": headers, "timeout": timeout}
+        )
         endpoint = url.rsplit("/", 1)[1]
         name = params["systemName"]
         return self.responses[name if endpoint == "system" else f"{endpoint}:{name}"]
@@ -69,7 +71,11 @@ def test_get_system_sends_expected_request(client, session):
 
     (call,) = session.calls
     assert call["url"] == "https://www.edsm.net/api-v1/system"
-    assert call["params"] == {"systemName": "Sol", "showCoordinates": 1, "showInformation": 1}
+    assert call["params"] == {
+        "systemName": "Sol",
+        "showCoordinates": 1,
+        "showInformation": 1,
+    }
     assert call["headers"] == {"User-Agent": "Elite Dangerous MCP"}
     assert call["timeout"] == 10
 
@@ -115,7 +121,9 @@ def test_get_distance_euclidean(client, session):
 
     expected = math.sqrt(9530.5**2 + 910.28**2 + 19808.125**2)
     assert client.get_distance("Sol", "Colonia") == pytest.approx(expected)
-    assert client.get_distance("Sol", "Colonia") == pytest.approx(client.get_distance("Colonia", "Sol"))
+    assert client.get_distance("Sol", "Colonia") == pytest.approx(
+        client.get_distance("Colonia", "Sol")
+    )
 
 
 def test_get_distance_same_system_is_zero(client, session):
@@ -141,7 +149,9 @@ def test_get_distance_system_without_coords_raises_clear_error(client, session):
 
 
 def test_get_system_stations_uses_stations_endpoint(client, session):
-    session.responses["stations:Sol"] = FakeResponse({"name": "Sol", "stations": SOL_STATIONS})
+    session.responses["stations:Sol"] = FakeResponse(
+        {"name": "Sol", "stations": SOL_STATIONS}
+    )
 
     assert client.get_system_stations("Sol") == SOL_STATIONS
 

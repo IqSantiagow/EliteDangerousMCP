@@ -4,9 +4,11 @@ import os
 
 import pytest
 
-from src.edsm.edsm import EdsmClient
+from src.apis.edsm import EdsmClient
 
-pytestmark = pytest.mark.skipif(os.environ.get("EDSM_LIVE") != "1", reason="set EDSM_LIVE=1")
+pytestmark = pytest.mark.skipif(
+    os.environ.get("EDSM_LIVE") != "1", reason="set EDSM_LIVE=1"
+)
 
 
 @pytest.fixture

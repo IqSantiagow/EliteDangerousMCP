@@ -1,6 +1,6 @@
 import math
 
-import requests
+import httpx
 
 BASE_URL = "https://www.edsm.net/api-v1"
 SYSTEM_BASE_URL = "https://www.edsm.net/api-system-v1"
@@ -9,8 +9,8 @@ TIMEOUT = 10
 
 
 class EdsmClient:
-    def __init__(self, client: requests.Session | None = None):
-        self.client = client or requests
+    def __init__(self, client: httpx.Client | None = None):
+        self.client = client or httpx.Client()
         self.system_cache = {}
 
     def _base_request_spec(self, url: str, name: str, **params) -> dict:
