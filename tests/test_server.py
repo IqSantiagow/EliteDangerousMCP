@@ -63,7 +63,9 @@ def test_registered_tools():
         "get_system_info",
         "get_system_stations",
         "get_system_factions",
-        "get_item_prices",
+        "get_supported_commodities",
+        "find_best_selling_station",
+        "find_best_buying_station",
     }
 
 
@@ -105,3 +107,43 @@ def test_unknown_system_surfaces_error_message(tool, args):
 def test_missing_required_argument_rejected():
     with pytest.raises(ToolError):
         call("get_system_info", {})
+
+
+@pytest.mark.parametrize(
+    ("tool", "looking_for_buy"),
+    [
+        ("find_best_selling_station", False),
+        ("find_best_buying_station", True),
+    ],
+)
+def test_station_search_tools_select_market_direction(
+    monkeypatch, tool, looking_for_buy
+):
+    calls = []
+
+    class StubSpanshClient:
+        def get_item_prices(self, **kwargs):
+            calls.append(kwargs)
+            return kwargs
+
+    monkeypatch.setattr(server, "spansh", StubSpanshClient())
+
+    result = call(
+        tool,
+        {
+            "item_name": "Gold",
+            "reference_system": "Sol",
+            "maximum_distance": 25.0,
+            "demand": 300,
+        },
+    )
+
+    expected = {
+        "item_name": "Gold",
+        "reference_system": "Sol",
+        "maximum_distance": 25.0,
+        "demand": 300,
+        "looking_for_buy": looking_for_buy,
+    }
+    assert result.data == expected
+    assert calls == [expected]

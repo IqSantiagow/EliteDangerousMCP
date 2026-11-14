@@ -1,9 +1,11 @@
 from fastmcp import FastMCP
 
 from src.apis.edsm import EdsmClient
+from src.apis.spansh import SpanshClient
 
 mcp = FastMCP("Elite Dangerous MCP")
 edsm = EdsmClient()
+spansh = SpanshClient()
 
 
 @mcp.tool
@@ -45,35 +47,50 @@ def get_supported_commodities() -> list[str]:
 
 
 @mcp.tool
-def get_item_prices(
+def find_best_selling_station(
     item_name: str,
     reference_system: str,
     maximum_distance: float = 50.0,
     demand: int = 500,
-    looking_for_buy: bool = False,
 ) -> dict:
-    """Search Spansh station markets for a commodity near a star system.
+    """Find a nearby station to sell a commodity to.
 
     Provide the exact commodity and reference system names. `maximum_distance` is
-    the search radius in light-years, and `demand` is the minimum quantity
-    threshold (both default to 50 light-years and 500 units, respectively).
-    With `looking_for_buy=False` (default), find stations that will buy the
-    commodity: demand must meet the threshold, and results are sorted by sell
-    price descending. With `looking_for_buy=True`, find stations selling the
-    commodity: supply must meet the threshold, and results are sorted by buy
-    price ascending.
-    The response is Spansh JSON, limited to five stations with market data updated
-    in the last seven days; fleet carriers are excluded.
+    the search radius in light-years; `demand` is the minimum station demand.
+    Results are sorted by sell price descending. The search returns up to five
+    stations with market data updated in the last seven days; fleet carriers
+    are excluded.
     """
-    from src.apis.spansh import SpanshClient
-
-    client = SpanshClient()
-    return client.get_item_prices(
+    return spansh.get_item_prices(
         item_name=item_name,
         reference_system=reference_system,
         maximum_distance=maximum_distance,
         demand=demand,
-        looking_for_buy=looking_for_buy,
+        looking_for_buy=False,
+    )
+
+
+@mcp.tool
+def find_best_buying_station(
+    item_name: str,
+    reference_system: str,
+    maximum_distance: float = 50.0,
+    demand: int = 500,
+) -> dict:
+    """Find a nearby station selling a commodity to the pilot.
+
+    Provide the exact commodity and reference system names. `maximum_distance` is
+    the search radius in light-years; `demand` is the minimum station supply.
+    Results are sorted by buy price ascending. The search returns up to five
+    stations with market data updated in the last seven days; fleet carriers
+    are excluded.
+    """
+    return spansh.get_item_prices(
+        item_name=item_name,
+        reference_system=reference_system,
+        maximum_distance=maximum_distance,
+        demand=demand,
+        looking_for_buy=True,
     )
 
 
