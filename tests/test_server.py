@@ -6,6 +6,8 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
 import server
+from src.apis.spansh_filters import SortType
+from src.models.models import StationMarketItem
 
 SYSTEMS = {
     "Sol": {
@@ -66,6 +68,7 @@ def test_registered_tools():
         "get_supported_commodities",
         "find_best_selling_station",
         "find_best_buying_station",
+        "compare_station_markets",
     }
 
 
@@ -110,19 +113,22 @@ def test_missing_required_argument_rejected():
 
 
 @pytest.mark.parametrize(
-    ("tool", "looking_for_buy"),
+    ("tool", "expected_filters"),
     [
-        ("find_best_selling_station", False),
-        ("find_best_buying_station", True),
+        ("find_best_selling_station", {"demand": 300}),
+        (
+            "find_best_buying_station",
+            {"demand": None, "supply": 300, "sort_type": SortType.MARKET_BUY_PRICE},
+        ),
     ],
 )
 def test_station_search_tools_select_market_direction(
-    monkeypatch, tool, looking_for_buy
+    monkeypatch, tool, expected_filters
 ):
     calls = []
 
     class StubSpanshClient:
-        def get_item_prices(self, **kwargs):
+        def get_item_prices_around_reference_system(self, **kwargs):
             calls.append(kwargs)
             return kwargs
 
@@ -142,8 +148,81 @@ def test_station_search_tools_select_market_direction(
         "item_name": "Gold",
         "reference_system": "Sol",
         "maximum_distance": 25.0,
-        "demand": 300,
-        "looking_for_buy": looking_for_buy,
+        **expected_filters,
     }
     assert result.data == expected
     assert calls == [expected]
+
+
+def market_item(name, buy, sell, supply, demand):
+    return StationMarketItem(
+        commodity=name,
+        category="Metals",
+        buy_price=buy,
+        sell_price=sell,
+        supply=supply,
+        demand=demand,
+    )
+
+
+def test_compare_station_markets_uses_stations_and_trade_limits(monkeypatch):
+    class MarketClient:
+        def get_market(self, system_name, station_name):
+            return {
+                ("Sol", "Source"): [
+                    market_item("Gold", 100, 0, 20, 0),
+                    market_item("Silver", 150, 0, 3, 0),
+                    market_item("Copper", 0, 0, 10, 0),
+                    market_item("Aluminium", 100, 0, 10, 0),
+                    market_item("Platinum", 100, 0, 40, 0),
+                ],
+                ("Alpha Centauri", "Destination"): [
+                    market_item("Gold", 0, 200, 0, 5),
+                    market_item("Silver", 0, 180, 0, 50),
+                    market_item("Copper", 0, 200, 0, 10),
+                    market_item("Aluminium", 0, 90, 0, 10),
+                    market_item("Platinum", 0, 120, 0, 30),
+                ],
+            }[(system_name, station_name)]
+
+    monkeypatch.setattr(server, "spansh", MarketClient())
+    result = call(
+        "compare_station_markets",
+        {
+            "from_system": "Sol", "from_station": "Source",
+            "to_system": "Alpha Centauri", "to_station": "Destination", "cargo": 10,
+        },
+    )
+    assert result.data == {
+        "Gold": {"from": 100, "to": 200, "difference": 100, "quantity": 5, "profit": 500},
+        "Silver": {"from": 150, "to": 180, "difference": 30, "quantity": 3, "profit": 90},
+        "Platinum": {"from": 100, "to": 120, "difference": 20, "quantity": 10, "profit": 200},
+    }
+
+
+@pytest.mark.parametrize("cargo", [0, -1])
+def test_compare_station_markets_rejects_nonpositive_capacity(cargo):
+    with pytest.raises(ToolError, match="cargo must be greater than zero"):
+        call(
+            "compare_station_markets",
+            {
+                "from_system": "Sol", "from_station": "Source",
+                "to_system": "Sol", "to_station": "Destination", "cargo": cargo,
+            },
+        )
+
+
+def test_compare_station_markets_reports_unknown_station(monkeypatch):
+    class MarketClient:
+        def get_market(self, system_name, station_name):
+            raise ValueError(f"Station '{station_name}' not found in '{system_name}'")
+
+    monkeypatch.setattr(server, "spansh", MarketClient())
+    with pytest.raises(ToolError, match="Station 'Missing'"):
+        call(
+            "compare_station_markets",
+            {
+                "from_system": "Sol", "from_station": "Missing",
+                "to_system": "Sol", "to_station": "Destination", "cargo": 10,
+            },
+        )

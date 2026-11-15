@@ -2,6 +2,7 @@ from fastmcp import FastMCP
 
 from src.apis.edsm import EdsmClient
 from src.apis.spansh import SpanshClient
+from src.apis.spansh_filters import SortType
 
 mcp = FastMCP("Elite Dangerous MCP")
 edsm = EdsmClient()
@@ -58,15 +59,14 @@ def find_best_selling_station(
     Provide the exact commodity and reference system names. `maximum_distance` is
     the search radius in light-years; `demand` is the minimum station demand.
     Results are sorted by sell price descending. The search returns up to five
-    stations with market data updated in the last seven days; fleet carriers
-    are excluded.
+    stations with large pads and market data updated in the last seven days;
+    fleet carriers are excluded.
     """
-    return spansh.get_item_prices(
+    return spansh.get_item_prices_around_reference_system(
         item_name=item_name,
         reference_system=reference_system,
         maximum_distance=maximum_distance,
         demand=demand,
-        looking_for_buy=False,
     )
 
 
@@ -82,16 +82,57 @@ def find_best_buying_station(
     Provide the exact commodity and reference system names. `maximum_distance` is
     the search radius in light-years; `demand` is the minimum station supply.
     Results are sorted by buy price ascending. The search returns up to five
-    stations with market data updated in the last seven days; fleet carriers
-    are excluded.
+    stations with large pads and market data updated in the last seven days;
+    fleet carriers are excluded.
     """
-    return spansh.get_item_prices(
+    return spansh.get_item_prices_around_reference_system(
         item_name=item_name,
         reference_system=reference_system,
         maximum_distance=maximum_distance,
-        demand=demand,
-        looking_for_buy=True,
+        demand=None,
+        supply=demand,
+        sort_type=SortType.MARKET_BUY_PRICE,
     )
+
+
+@mcp.tool
+def compare_station_markets(
+    from_system: str, from_station: str, to_system: str, to_station: str, cargo: int
+) -> dict:
+    """Compare profitable trades between two specified stations.
+
+    Provide exact system and station names and the cargo capacity in tonnes.
+    Each result includes prices, profit per tonne, the quantity limited by
+    capacity, supply and demand, and the total profit before other costs.
+    """
+    if cargo <= 0:
+        raise ValueError("cargo must be greater than zero")
+
+    source = spansh.get_market(from_system, from_station)
+    destination = {
+        item.commodity: item for item in spansh.get_market(to_system, to_station)
+    }
+
+    price_comparison = {}
+    for item in source:
+        target = destination.get(item.commodity)
+        if (
+            target is not None
+            and item.buy_price > 0
+            and target.sell_price > item.buy_price
+        ):
+            quantity = min(cargo, item.supply, target.demand)
+            if quantity > 0:
+                difference = target.sell_price - item.buy_price
+                price_comparison[item.commodity] = {
+                    "from": item.buy_price,
+                    "to": target.sell_price,
+                    "difference": difference,
+                    "quantity": quantity,
+                    "profit": difference * quantity,
+                }
+
+    return price_comparison
 
 
 if __name__ == "__main__":

@@ -20,11 +20,16 @@ copilot for Elite Dangerous.
 | `get_supported_commodities` | Commodity names accepted by station searches |
 | `find_best_selling_station` | Nearby stations buying a commodity, sorted by sell price |
 | `find_best_buying_station` | Nearby stations selling a commodity, sorted by buy price |
+| `compare_station_markets` | Profitable trades between two stations for a given cargo capacity |
 
 Systems are looked up by exact name (e.g. `Sol`, `Colonia`). Unknown systems
 and systems without known coordinates return an error message. Station searches
 use exact commodity and system names, default to a 50 light-year radius and a
 500-unit demand or supply threshold, and return up to five stations.
+Station searches exclude fleet carriers and require a large landing pad and
+market data updated within the last seven days. Market comparisons retrieve
+both markets from Spansh using exact system and station names and limit
+quantities by cargo capacity, source supply, and destination demand.
 
 ## Setup
 
@@ -65,6 +70,7 @@ live EDSM API, set `EDSM_LIVE=1`.
   `requests.Session` for testing)
 - `src/apis/spansh.py` - `SpanshClient` for nearby station market searches
 - `src/apis/spansh_filters.py` - Spansh market search filters
+- `src/models/models.py` - Pydantic models for Spansh station data
 - `tests/` - offline and live tests
 
 ## Data

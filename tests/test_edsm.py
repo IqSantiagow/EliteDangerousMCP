@@ -1,7 +1,8 @@
 import math
+from json import JSONDecodeError
 
+import httpx
 import pytest
-import requests
 
 from src.apis.edsm import EdsmClient
 
@@ -22,7 +23,11 @@ class FakeResponse:
 
     def raise_for_status(self):
         if self.status_code >= 400:
-            raise requests.HTTPError(f"{self.status_code} error")
+            request = httpx.Request("GET", "https://example.com")
+            response = httpx.Response(self.status_code, request=request)
+            raise httpx.HTTPStatusError(
+                f"{self.status_code} error", request=request, response=response
+            )
 
     def json(self):
         if isinstance(self._payload, Exception):
@@ -31,7 +36,7 @@ class FakeResponse:
 
 
 class FakeSession:
-    """Injected into EdsmClient instead of requests/Session.
+    """Injected into EdsmClient instead of httpx.Client.
 
     Responses are set by key: the system name for /system, `stations:<name>`
     and `factions:<name>` for the other endpoints.
@@ -45,6 +50,7 @@ class FakeSession:
         self.calls.append(
             {"url": url, "params": params, "headers": headers, "timeout": timeout}
         )
+        assert params is not None
         endpoint = url.rsplit("/", 1)[1]
         name = params["systemName"]
         return self.responses[name if endpoint == "system" else f"{endpoint}:{name}"]
@@ -60,8 +66,12 @@ def client(session):
     return EdsmClient(client=session)
 
 
-def test_default_client_uses_requests_module():
-    assert EdsmClient().client is requests
+def test_default_client_uses_httpx():
+    client = EdsmClient().client
+    try:
+        assert isinstance(client, httpx.Client)
+    finally:
+        client.close()
 
 
 def test_get_system_sends_expected_request(client, session):
@@ -91,12 +101,12 @@ def test_get_system_unknown_system_raises(client, session, empty):
 def test_get_system_http_error_propagates(client, session):
     session.responses["Sol"] = FakeResponse({}, status=500)
 
-    with pytest.raises(requests.HTTPError):
+    with pytest.raises(httpx.HTTPStatusError):
         client.get_system("Sol")
 
 
 def test_get_system_invalid_json_raises_value_error(client, session):
-    session.responses["Sol"] = FakeResponse(requests.JSONDecodeError("boom", "", 0))
+    session.responses["Sol"] = FakeResponse(JSONDecodeError("boom", "", 0))
 
     with pytest.raises(ValueError, match="invalid response for 'Sol'"):
         client.get_system("Sol")
