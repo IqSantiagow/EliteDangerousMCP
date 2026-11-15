@@ -362,3 +362,93 @@ def test_ship_search_returns_only_the_requested_ship_with_its_price():
             }
         ]
     }
+
+
+def test_module_search_sends_module_and_outfitting_freshness_filters():
+    http_client = Mock()
+    http_client.post.return_value.json.return_value = {"results": []}
+
+    result = SpanshClient(client=http_client).get_module_prices_around_reference_system(
+        "Frame Shift Drive", "Sol", maximum_distance=25, module_class=5, rating="A"
+    )
+
+    assert result == {"stations": []}
+    assert http_client.post.call_args.kwargs["json"] == {
+        "filters": {
+            "modules": [
+                {
+                    "name": {"value": ["Frame Shift Drive"]},
+                    "class": {"value": ["5"]},
+                    "rating": {"value": ["A"]},
+                }
+            ],
+            "distance": {"min": "0", "max": "25"},
+            "type": {"value": ["Drake-Class Carrier"], "logic": "NOT"},
+            "outfitting_updated_at": {"comparison": "<=>", "value": ["now-7d", "now"]},
+            "has_large_pad": {"value": True},
+        },
+        "sort": [{"distance": {"direction": "asc"}}],
+        "size": 5,
+        "page": 0,
+        "reference_system": "Sol",
+    }
+
+
+def test_module_search_omits_class_and_rating_when_not_given():
+    http_client = Mock()
+    http_client.post.return_value.json.return_value = {"results": []}
+
+    SpanshClient(client=http_client).get_module_prices_around_reference_system(
+        "Frame Shift Drive", "Sol"
+    )
+
+    sent = http_client.post.call_args.kwargs["json"]["filters"]["modules"]
+    assert sent == [{"name": {"value": ["Frame Shift Drive"]}}]
+
+
+def test_module_search_returns_only_matching_modules_with_price():
+    def module(name, class_, rating, price):
+        return {
+            "name": name,
+            "class": class_,
+            "rating": rating,
+            "category": "Core Internals",
+            "ed_symbol": "x",
+            "price": price,
+        }
+
+    http_client = Mock()
+    http_client.post.return_value.json.return_value = {
+        "results": [
+            {
+                "id": "1",
+                "name": "Cayley Enterprise",
+                "system_name": "Wolf 359",
+                "distance": 7.8,
+                "outfitting_updated_at": "2026-11-14T10:00:00Z",
+                "modules": [
+                    module("Frame Shift Drive", 5, "A", 1_800_000),
+                    module("Frame Shift Drive", 4, "A", 600_000),
+                    module("Power Plant", 5, "A", 900_000),
+                ],
+            }
+        ]
+    }
+
+    result = SpanshClient(client=http_client).get_module_prices_around_reference_system(
+        "Frame Shift Drive", "Sol", module_class=5, rating="A"
+    )
+
+    assert result == {
+        "stations": [
+            {
+                "name": "Cayley Enterprise",
+                "system": "Wolf 359",
+                "distance": 7.8,
+                "outfitting_updated_at": "2026-11-14T10:00:00Z",
+                "modules": [
+                    {"name": "Frame Shift Drive", "class": 5, "rating": "A", "price": 1_800_000}
+                ],
+            }
+        ]
+    }

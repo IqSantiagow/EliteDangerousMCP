@@ -21,6 +21,7 @@ copilot for Elite Dangerous.
 | `find_best_selling_station` | Nearby stations buying a commodity, sorted by sell price |
 | `find_best_buying_station` | Nearby stations selling a commodity, sorted by buy price |
 | `find_station_selling_ship` | Nearest stations whose shipyard sells a ship, with price and data age |
+| `find_station_selling_module` | Nearest stations whose outfitting sells a module (optional class and rating), with price and data age |
 | `compare_station_markets` | Profitable trades between two stations for a given cargo capacity |
 
 Systems are looked up by exact name (e.g. `Sol`, `Colonia`). Unknown systems
@@ -29,7 +30,9 @@ use exact commodity and system names, default to a 50 light-year radius and a
 500-unit demand or supply threshold, and return up to five stations.
 Station searches exclude fleet carriers and require a large landing pad and
 market data updated within the last seven days. Ship searches use the exact ship name (e.g. `Anaconda`), sort by distance and
-require shipyard data updated within the last seven days. Market comparisons retrieve
+require shipyard data updated within the last seven days. Module searches use the exact module name (e.g. `Frame Shift Drive`), an
+optional class and rating, and require outfitting data updated within the last
+seven days. Market comparisons retrieve
 both markets from Spansh using exact system and station names and limit
 quantities by cargo capacity, source supply, and destination demand.
 

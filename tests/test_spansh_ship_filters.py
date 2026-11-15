@@ -4,6 +4,7 @@ from src.apis.spansh_filters import (
     Direction,
     DistanceFilter,
     MarketFilter,
+    ModuleFilter,
     ShipFilter,
     SimpleFilter,
     SortFilter,
@@ -44,7 +45,7 @@ def test_where_to_buy_a_ship_request_matches_spansh_format():
 
 
 def test_station_filter_rejects_market_and_ships_together():
-    with pytest.raises(ValueError, match="exactly one of market or ships"):
+    with pytest.raises(ValueError, match="exactly one of market, ships or modules"):
         StationFilter(
             market=[MarketFilter(item="Gold")],
             ships=[ShipFilter(name=SimpleFilter(value=["Anaconda"]))],
@@ -52,5 +53,39 @@ def test_station_filter_rejects_market_and_ships_together():
 
 
 def test_station_filter_requires_market_or_ships():
-    with pytest.raises(ValueError, match="exactly one of market or ships"):
+    with pytest.raises(ValueError, match="exactly one of market, ships or modules"):
         StationFilter(distance=DistanceFilter(min=0, max=50))
+
+
+def test_station_filter_rejects_modules_together_with_ships():
+    with pytest.raises(ValueError, match="exactly one of market, ships or modules"):
+        StationFilter(
+            ships=[ShipFilter(name=SimpleFilter(value=["Anaconda"]))],
+            modules=[ModuleFilter(name=SimpleFilter(value=["Frame Shift Drive"]))],
+        )
+
+
+def test_module_filter_serializes_class_and_rating_like_spansh():
+    request = SpanshFilter(
+        reference_system="Sol",
+        filters=StationFilter(
+            modules=[
+                ModuleFilter(
+                    name=SimpleFilter(value=["Frame Shift Drive"]),
+                    class_=SimpleFilter(value=["5"]),
+                    rating=SimpleFilter(value=["A"]),
+                )
+            ]
+        ),
+        sort=[SortFilter(type=SortType.DISTANCE, direction=Direction.ASC)],
+    )
+
+    assert dump(request)["filters"] == {
+        "modules": [
+            {
+                "name": {"value": ["Frame Shift Drive"]},
+                "class": {"value": ["5"]},
+                "rating": {"value": ["A"]},
+            }
+        ]
+    }

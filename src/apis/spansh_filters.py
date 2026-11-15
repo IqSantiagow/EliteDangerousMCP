@@ -122,19 +122,28 @@ class ShipFilter(BaseModel):
     name: SimpleFilter
 
 
+class ModuleFilter(BaseModel):
+    name: SimpleFilter
+    class_: SimpleFilter | None = Field(default=None, serialization_alias="class")
+    rating: SimpleFilter | None = None
+
+
 class StationFilter(BaseModel):
     market: list[MarketFilter] | None = None
     ships: list[ShipFilter] | None = None
+    modules: list[ModuleFilter] | None = None
     distance: DistanceFilter | None = None
     type: SimpleFilter | None = None
     market_updated_at: ComparisonFilter | None = None
     shipyard_updated_at: ComparisonFilter | None = None
+    outfitting_updated_at: ComparisonFilter | None = None
     has_large_pad: SimpleFilter | None = None
 
     @model_validator(mode="after")
     def validate_exactly_one_search_target(self) -> Self:
-        if (self.market is None) == (self.ships is None):
-            raise ValueError("exactly one of market or ships must be set")
+        targets = (self.market, self.ships, self.modules)
+        if sum(target is not None for target in targets) != 1:
+            raise ValueError("exactly one of market, ships or modules must be set")
         return self
 
 

@@ -6,6 +6,7 @@ from src.apis.spansh_filters import (
     Direction,
     DistanceFilter,
     MarketFilter,
+    ModuleFilter,
     ShipFilter,
     SimpleFilter,
     SortFilter,
@@ -157,6 +158,70 @@ class SpanshClient:
                         "distance": station.distance,
                         "shipyard_updated_at": station.shipyard_updated_at,
                         "ship": {"name": ship.name, "price": ship.price},
+                    }
+                )
+        return {"stations": stations}
+
+    def get_module_prices_around_reference_system(
+        self,
+        module_name: str,
+        reference_system: str,
+        maximum_distance: float = 50.0,
+        module_class: int | None = None,
+        rating: str | None = None,
+    ) -> dict:
+        spansh_filters = SpanshFilter(
+            reference_system=reference_system,
+            filters=StationFilter(
+                modules=[
+                    ModuleFilter(
+                        name=SimpleFilter(value=[module_name]),
+                        class_=(
+                            SimpleFilter(value=[str(module_class)])
+                            if module_class is not None
+                            else None
+                        ),
+                        rating=(
+                            SimpleFilter(value=[rating]) if rating is not None else None
+                        ),
+                    )
+                ],
+                distance=DistanceFilter(min=0, max=maximum_distance),
+                type=SimpleFilter(value=["Drake-Class Carrier"], logic="NOT"),
+                outfitting_updated_at=ComparisonFilter(
+                    comparison=ComparisonType.APPROX, value=["now-7d", "now"]
+                ),
+                has_large_pad=SimpleFilter(value=True),
+            ),
+            sort=[SortFilter(type=SortType.DISTANCE, direction=Direction.ASC)],
+        ).model_dump(mode="json", by_alias=True, exclude_none=True)
+
+        response = self.client.post(STATION_SEARCH_URL, json=spansh_filters)
+        response.raise_for_status()
+
+        stations = []
+        for result in response.json()["results"]:
+            station = Station(**result)
+            modules = [
+                {
+                    "name": module.name,
+                    "class": module.class_,
+                    "rating": module.rating,
+                    "price": module.price,
+                }
+                for module in station.modules or []
+                if module.name == module_name
+                and (module_class is None or module.class_ == module_class)
+                and (rating is None or module.rating == rating)
+            ]
+            if modules:
+                stations.append(
+                    {
+                        "name": station.name,
+                        "system": station.system_name,
+                        "distance": station.distance,
+                        "outfitting_updated_at": station.outfitting_updated_at,
+                        "modules": modules,
                     }
                 )
         return {"stations": stations}

@@ -70,6 +70,7 @@ def test_registered_tools():
         "find_best_buying_station",
         "compare_station_markets",
         "find_station_selling_ship",
+        "find_station_selling_module",
     }
 
 
@@ -245,4 +246,30 @@ def test_find_station_selling_ship_tool_passes_arguments(monkeypatch):
         "ship_name": "Anaconda",
         "reference_system": "Sol",
         "maximum_distance": 25.0,
+    }
+
+
+def test_find_station_selling_module_tool_passes_arguments(monkeypatch):
+    class StubSpanshClient:
+        def get_module_prices_around_reference_system(self, **kwargs):
+            return kwargs
+
+    monkeypatch.setattr(server, "spansh", StubSpanshClient())
+
+    result = call(
+        "find_station_selling_module",
+        {
+            "module_name": "Frame Shift Drive",
+            "reference_system": "Sol",
+            "module_class": 5,
+            "rating": "A",
+        },
+    )
+
+    assert result.data == {
+        "module_name": "Frame Shift Drive",
+        "reference_system": "Sol",
+        "maximum_distance": 50.0,
+        "module_class": 5,
+        "rating": "A",
     }

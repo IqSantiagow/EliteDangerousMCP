@@ -118,6 +118,34 @@ def find_station_selling_ship(
 
 
 @mcp.tool
+def find_station_selling_module(
+    module_name: str,
+    reference_system: str,
+    maximum_distance: float = 50.0,
+    module_class: int | None = None,
+    rating: str | None = None,
+) -> dict:
+    """Find the nearest stations whose outfitting sells a ship module.
+
+    Provide the exact module name (e.g. "Frame Shift Drive") and reference
+    system. `module_class` (e.g. 5) and `rating` (e.g. "A") are optional; leave
+    them out for any class or rating. `maximum_distance` is the search radius in
+    light-years. Results are sorted by distance and list the matching modules
+    with prices and when the outfitting data was last updated. The search
+    returns up to five stations with large pads and outfitting data updated in
+    the last seven days; fleet carriers are excluded. An unknown module name
+    returns no stations.
+    """
+    return spansh.get_module_prices_around_reference_system(
+        module_name=module_name,
+        reference_system=reference_system,
+        maximum_distance=maximum_distance,
+        module_class=module_class,
+        rating=rating,
+    )
+
+
+@mcp.tool
 def compare_station_markets(
     from_system: str, from_station: str, to_system: str, to_station: str, cargo: int
 ) -> dict:
