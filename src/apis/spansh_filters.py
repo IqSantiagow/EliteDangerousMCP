@@ -14,6 +14,7 @@ from pydantic import (
 class SortType(StrEnum):
     MARKET_SELL_PRICE = "market_sell_price"
     MARKET_BUY_PRICE = "market_buy_price"
+    DISTANCE = "distance"
 
 
 class ComparisonType(StrEnum):
@@ -32,11 +33,19 @@ class Direction(StrEnum):
 
 class SortFilter(BaseModel):
     type: SortType
-    name: str
+    name: str | None = None  # commodity name; not used when sorting by distance
     direction: Direction
+
+    @model_validator(mode="after")
+    def validate_name(self) -> Self:
+        if self.type != SortType.DISTANCE and self.name is None:
+            raise ValueError("name is required when sorting by market price")
+        return self
 
     @model_serializer
     def serialize(self) -> dict:
+        if self.type == SortType.DISTANCE:
+            return {"distance": {"direction": self.direction}}
         return {
             self.type.value: [{"name": self.name, "direction": self.direction}],
         }
@@ -109,12 +118,24 @@ class SimpleFilter(BaseModel):
     logic: str | None = None
 
 
+class ShipFilter(BaseModel):
+    name: SimpleFilter
+
+
 class StationFilter(BaseModel):
-    market: list[MarketFilter]
+    market: list[MarketFilter] | None = None
+    ships: list[ShipFilter] | None = None
     distance: DistanceFilter | None = None
     type: SimpleFilter | None = None
     market_updated_at: ComparisonFilter | None = None
+    shipyard_updated_at: ComparisonFilter | None = None
     has_large_pad: SimpleFilter | None = None
+
+    @model_validator(mode="after")
+    def validate_exactly_one_search_target(self) -> Self:
+        if (self.market is None) == (self.ships is None):
+            raise ValueError("exactly one of market or ships must be set")
+        return self
 
 
 class SpanshFilter(BaseModel):

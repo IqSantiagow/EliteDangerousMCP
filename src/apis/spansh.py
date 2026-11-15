@@ -6,6 +6,7 @@ from src.apis.spansh_filters import (
     Direction,
     DistanceFilter,
     MarketFilter,
+    ShipFilter,
     SimpleFilter,
     SortFilter,
     SortType,
@@ -118,6 +119,47 @@ class SpanshClient:
                 and item_name in [item.commodity for item in station.market]
             ]
         }
+
+    def get_ship_prices_around_reference_system(
+        self,
+        ship_name: str,
+        reference_system: str,
+        maximum_distance: float = 50.0,
+    ) -> dict:
+        spansh_filters = SpanshFilter(
+            reference_system=reference_system,
+            filters=StationFilter(
+                ships=[ShipFilter(name=SimpleFilter(value=[ship_name]))],
+                distance=DistanceFilter(min=0, max=maximum_distance),
+                type=SimpleFilter(value=["Drake-Class Carrier"], logic="NOT"),
+                shipyard_updated_at=ComparisonFilter(
+                    comparison=ComparisonType.APPROX, value=["now-7d", "now"]
+                ),
+                has_large_pad=SimpleFilter(value=True),
+            ),
+            sort=[SortFilter(type=SortType.DISTANCE, direction=Direction.ASC)],
+        ).model_dump(mode="json", by_alias=True, exclude_none=True)
+
+        response = self.client.post(STATION_SEARCH_URL, json=spansh_filters)
+        response.raise_for_status()
+
+        stations = []
+        for result in response.json()["results"]:
+            station = Station(**result)
+            ship = next(
+                (ship for ship in station.ships or [] if ship.name == ship_name), None
+            )
+            if ship is not None:
+                stations.append(
+                    {
+                        "name": station.name,
+                        "system": station.system_name,
+                        "distance": station.distance,
+                        "shipyard_updated_at": station.shipyard_updated_at,
+                        "ship": {"name": ship.name, "price": ship.price},
+                    }
+                )
+        return {"stations": stations}
 
     def get_market(
         self, system_name: str, station_name: str

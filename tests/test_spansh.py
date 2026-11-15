@@ -303,3 +303,62 @@ def test_get_item_prices_rejects_none_parameters(parameter):
         SpanshClient(client=http_client).get_item_prices_around_reference_system(**arguments)
 
     http_client.post.assert_not_called()
+
+
+def test_ship_search_sends_ship_and_shipyard_freshness_filters():
+    http_client = Mock()
+    http_client.post.return_value.json.return_value = {"results": []}
+
+    result = SpanshClient(client=http_client).get_ship_prices_around_reference_system(
+        "Anaconda", "Sol", maximum_distance=25
+    )
+
+    assert result == {"stations": []}
+    assert http_client.post.call_args.kwargs["json"] == {
+        "filters": {
+            "ships": [{"name": {"value": ["Anaconda"]}}],
+            "distance": {"min": "0", "max": "25"},
+            "type": {"value": ["Drake-Class Carrier"], "logic": "NOT"},
+            "shipyard_updated_at": {"comparison": "<=>", "value": ["now-7d", "now"]},
+            "has_large_pad": {"value": True},
+        },
+        "sort": [{"distance": {"direction": "asc"}}],
+        "size": 5,
+        "page": 0,
+        "reference_system": "Sol",
+    }
+
+
+def test_ship_search_returns_only_the_requested_ship_with_its_price():
+    http_client = Mock()
+    http_client.post.return_value.json.return_value = {
+        "results": [
+            {
+                "id": "1",
+                "name": "Cayley Enterprise",
+                "system_name": "Wolf 359",
+                "distance": 7.8,
+                "shipyard_updated_at": "2026-11-14T10:00:00Z",
+                "ships": [
+                    {"name": "Python", "price": 56978000, "symbol": "Python"},
+                    {"name": "Anaconda", "price": 146969450, "symbol": "Anaconda"},
+                ],
+            }
+        ]
+    }
+
+    result = SpanshClient(client=http_client).get_ship_prices_around_reference_system(
+        "Anaconda", "Sol"
+    )
+
+    assert result == {
+        "stations": [
+            {
+                "name": "Cayley Enterprise",
+                "system": "Wolf 359",
+                "distance": 7.8,
+                "shipyard_updated_at": "2026-11-14T10:00:00Z",
+                "ship": {"name": "Anaconda", "price": 146969450},
+            }
+        ]
+    }

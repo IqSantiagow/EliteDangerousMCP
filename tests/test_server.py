@@ -69,6 +69,7 @@ def test_registered_tools():
         "find_best_selling_station",
         "find_best_buying_station",
         "compare_station_markets",
+        "find_station_selling_ship",
     }
 
 
@@ -226,3 +227,22 @@ def test_compare_station_markets_reports_unknown_station(monkeypatch):
                 "to_system": "Sol", "to_station": "Destination", "cargo": 10,
             },
         )
+
+
+def test_find_station_selling_ship_tool_passes_arguments(monkeypatch):
+    class StubSpanshClient:
+        def get_ship_prices_around_reference_system(self, **kwargs):
+            return kwargs
+
+    monkeypatch.setattr(server, "spansh", StubSpanshClient())
+
+    result = call(
+        "find_station_selling_ship",
+        {"ship_name": "Anaconda", "reference_system": "Sol", "maximum_distance": 25.0},
+    )
+
+    assert result.data == {
+        "ship_name": "Anaconda",
+        "reference_system": "Sol",
+        "maximum_distance": 25.0,
+    }

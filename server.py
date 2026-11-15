@@ -96,6 +96,28 @@ def find_best_buying_station(
 
 
 @mcp.tool
+def find_station_selling_ship(
+    ship_name: str,
+    reference_system: str,
+    maximum_distance: float = 50.0,
+) -> dict:
+    """Find the nearest stations whose shipyard sells a ship.
+
+    Provide the exact ship name (e.g. "Anaconda") and reference system.
+    `maximum_distance` is the search radius in light-years. Results are sorted
+    by distance and include the ship price and when the shipyard data was last
+    updated. The search returns up to five stations with large pads and
+    shipyard data updated in the last seven days; fleet carriers are excluded.
+    An unknown ship name returns no stations.
+    """
+    return spansh.get_ship_prices_around_reference_system(
+        ship_name=ship_name,
+        reference_system=reference_system,
+        maximum_distance=maximum_distance,
+    )
+
+
+@mcp.tool
 def compare_station_markets(
     from_system: str, from_station: str, to_system: str, to_station: str, cargo: int
 ) -> dict:
