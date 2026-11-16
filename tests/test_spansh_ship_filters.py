@@ -5,6 +5,7 @@ from src.apis.spansh_filters import (
     DistanceFilter,
     MarketFilter,
     ModuleFilter,
+    ServiceFilter,
     ShipFilter,
     SimpleFilter,
     SortFilter,
@@ -45,7 +46,7 @@ def test_where_to_buy_a_ship_request_matches_spansh_format():
 
 
 def test_station_filter_rejects_market_and_ships_together():
-    with pytest.raises(ValueError, match="exactly one of market, ships or modules"):
+    with pytest.raises(ValueError, match="exactly one of market, ships, modules or services"):
         StationFilter(
             market=[MarketFilter(item="Gold")],
             ships=[ShipFilter(name=SimpleFilter(value=["Anaconda"]))],
@@ -53,12 +54,12 @@ def test_station_filter_rejects_market_and_ships_together():
 
 
 def test_station_filter_requires_market_or_ships():
-    with pytest.raises(ValueError, match="exactly one of market, ships or modules"):
+    with pytest.raises(ValueError, match="exactly one of market, ships, modules or services"):
         StationFilter(distance=DistanceFilter(min=0, max=50))
 
 
 def test_station_filter_rejects_modules_together_with_ships():
-    with pytest.raises(ValueError, match="exactly one of market, ships or modules"):
+    with pytest.raises(ValueError, match="exactly one of market, ships, modules or services"):
         StationFilter(
             ships=[ShipFilter(name=SimpleFilter(value=["Anaconda"]))],
             modules=[ModuleFilter(name=SimpleFilter(value=["Frame Shift Drive"]))],
@@ -89,3 +90,11 @@ def test_module_filter_serializes_class_and_rating_like_spansh():
             }
         ]
     }
+
+
+def test_station_filter_rejects_services_together_with_market():
+    with pytest.raises(ValueError, match="exactly one of market, ships, modules or services"):
+        StationFilter(
+            market=[MarketFilter(item="Gold")],
+            services=[ServiceFilter(name=SimpleFilter(value=["Repair"]))],
+        )

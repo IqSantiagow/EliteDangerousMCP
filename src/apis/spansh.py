@@ -7,6 +7,7 @@ from src.apis.spansh_filters import (
     DistanceFilter,
     MarketFilter,
     ModuleFilter,
+    ServiceFilter,
     ShipFilter,
     SimpleFilter,
     SortFilter,
@@ -14,9 +15,28 @@ from src.apis.spansh_filters import (
     SpanshFilter,
     StationFilter,
 )
-from src.models.models import COMMODITIES, Station, StationMarketItem
+from src.models.models import (
+    COMMODITIES,
+    MODULES,
+    SERVICES,
+    SHIPS,
+    Station,
+    StationMarketItem,
+)
 
 STATION_SEARCH_URL = "https://spansh.co.uk/api/stations/search"
+
+
+def check_names(kind: str, names: list[str], supported: list[str]) -> None:
+    """Raises ValueError for an empty list or names missing from `supported`.
+
+    Spansh silently returns nothing (or everything) for unknown names, so they
+    are rejected before any request is sent."""
+    if not names:
+        raise ValueError(f"{kind}: provide at least one name")
+    unknown = [name for name in names if name not in supported]
+    if unknown:
+        raise ValueError(f"Unknown {kind}: {', '.join(unknown)}")
 
 
 class SpanshClient:
@@ -123,14 +143,17 @@ class SpanshClient:
 
     def get_ship_prices_around_reference_system(
         self,
-        ship_name: str,
+        ship_names: list[str],
         reference_system: str,
         maximum_distance: float = 50.0,
     ) -> dict:
+        check_names("ships", ship_names, SHIPS)
         spansh_filters = SpanshFilter(
             reference_system=reference_system,
             filters=StationFilter(
-                ships=[ShipFilter(name=SimpleFilter(value=[ship_name]))],
+                ships=[
+                    ShipFilter(name=SimpleFilter(value=[name])) for name in ship_names
+                ],
                 distance=DistanceFilter(min=0, max=maximum_distance),
                 type=SimpleFilter(value=["Drake-Class Carrier"], logic="NOT"),
                 shipyard_updated_at=ComparisonFilter(
@@ -147,35 +170,36 @@ class SpanshClient:
         stations = []
         for result in response.json()["results"]:
             station = Station(**result)
-            ship = next(
-                (ship for ship in station.ships or [] if ship.name == ship_name), None
-            )
-            if ship is not None:
+            ships = [ship for ship in station.ships or [] if ship.name in ship_names]
+            if {ship.name for ship in ships} == set(ship_names):
                 stations.append(
                     {
                         "name": station.name,
                         "system": station.system_name,
                         "distance": station.distance,
                         "shipyard_updated_at": station.shipyard_updated_at,
-                        "ship": {"name": ship.name, "price": ship.price},
+                        "ships": [
+                            {"name": ship.name, "price": ship.price} for ship in ships
+                        ],
                     }
                 )
         return {"stations": stations}
 
     def get_module_prices_around_reference_system(
         self,
-        module_name: str,
+        module_names: list[str],
         reference_system: str,
         maximum_distance: float = 50.0,
         module_class: int | None = None,
         rating: str | None = None,
     ) -> dict:
+        check_names("modules", module_names, MODULES)
         spansh_filters = SpanshFilter(
             reference_system=reference_system,
             filters=StationFilter(
                 modules=[
                     ModuleFilter(
-                        name=SimpleFilter(value=[module_name]),
+                        name=SimpleFilter(value=[name]),
                         class_=(
                             SimpleFilter(value=[str(module_class)])
                             if module_class is not None
@@ -185,6 +209,7 @@ class SpanshClient:
                             SimpleFilter(value=[rating]) if rating is not None else None
                         ),
                     )
+                    for name in module_names
                 ],
                 distance=DistanceFilter(min=0, max=maximum_distance),
                 type=SimpleFilter(value=["Drake-Class Carrier"], logic="NOT"),
@@ -203,25 +228,69 @@ class SpanshClient:
         for result in response.json()["results"]:
             station = Station(**result)
             modules = [
-                {
-                    "name": module.name,
-                    "class": module.class_,
-                    "rating": module.rating,
-                    "price": module.price,
-                }
+                module
                 for module in station.modules or []
-                if module.name == module_name
+                if module.name in module_names
                 and (module_class is None or module.class_ == module_class)
                 and (rating is None or module.rating == rating)
             ]
-            if modules:
+            if {module.name for module in modules} == set(module_names):
                 stations.append(
                     {
                         "name": station.name,
                         "system": station.system_name,
                         "distance": station.distance,
                         "outfitting_updated_at": station.outfitting_updated_at,
-                        "modules": modules,
+                        "modules": [
+                            {
+                                "name": module.name,
+                                "class": module.class_,
+                                "rating": module.rating,
+                                "price": module.price,
+                            }
+                            for module in modules
+                        ],
+                    }
+                )
+        return {"stations": stations}
+
+    def get_service_stations_around_reference_system(
+        self,
+        services: list[str],
+        reference_system: str,
+        maximum_distance: float = 50.0,
+    ) -> dict:
+        check_names("services", services, SERVICES)
+        # One list entry per service: Spansh treats entries as AND, while
+        # logic "AND" inside a single entry returns nothing.
+        spansh_filters = SpanshFilter(
+            reference_system=reference_system,
+            filters=StationFilter(
+                services=[
+                    ServiceFilter(name=SimpleFilter(value=[service]))
+                    for service in services
+                ],
+                distance=DistanceFilter(min=0, max=maximum_distance),
+                type=SimpleFilter(value=["Drake-Class Carrier"], logic="NOT"),
+                has_large_pad=SimpleFilter(value=True),
+            ),
+            sort=[SortFilter(type=SortType.DISTANCE, direction=Direction.ASC)],
+        ).model_dump(mode="json", by_alias=True, exclude_none=True)
+
+        response = self.client.post(STATION_SEARCH_URL, json=spansh_filters)
+        response.raise_for_status()
+
+        stations = []
+        for result in response.json()["results"]:
+            station = Station(**result)
+            offered = {service.name for service in station.services or []}
+            if set(services) <= offered:
+                stations.append(
+                    {
+                        "name": station.name,
+                        "system": station.system_name,
+                        "distance": station.distance,
+                        "distance_to_arrival": station.distance_to_arrival,
                     }
                 )
         return {"stations": stations}

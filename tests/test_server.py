@@ -69,8 +69,8 @@ def test_registered_tools():
         "find_best_selling_station",
         "find_best_buying_station",
         "compare_station_markets",
-        "find_station_selling_ship",
-        "find_station_selling_module",
+        "find_station",
+        "get_supported_station_names",
     }
 
 
@@ -230,46 +230,79 @@ def test_compare_station_markets_reports_unknown_station(monkeypatch):
         )
 
 
-def test_find_station_selling_ship_tool_passes_arguments(monkeypatch):
-    class StubSpanshClient:
-        def get_ship_prices_around_reference_system(self, **kwargs):
-            return kwargs
+class RecordingSpanshClient:
+    def get_ship_prices_around_reference_system(self, **kwargs):
+        return {"method": "ships", **kwargs}
 
-    monkeypatch.setattr(server, "spansh", StubSpanshClient())
+    def get_module_prices_around_reference_system(self, **kwargs):
+        return {"method": "modules", **kwargs}
+
+    def get_service_stations_around_reference_system(self, **kwargs):
+        return {"method": "services", **kwargs}
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected"),
+    [
+        (
+            {"search_for": "ships", "names": ["Anaconda", "Python"]},
+            {"method": "ships", "ship_names": ["Anaconda", "Python"]},
+        ),
+        (
+            {
+                "search_for": "modules",
+                "names": ["Frame Shift Drive"],
+                "module_class": 5,
+                "rating": "A",
+            },
+            {
+                "method": "modules",
+                "module_names": ["Frame Shift Drive"],
+                "module_class": 5,
+                "rating": "A",
+            },
+        ),
+        (
+            {"search_for": "services", "names": ["Repair", "Refuel"]},
+            {"method": "services", "services": ["Repair", "Refuel"]},
+        ),
+    ],
+)
+def test_find_station_dispatches_by_search_for(monkeypatch, arguments, expected):
+    monkeypatch.setattr(server, "spansh", RecordingSpanshClient())
 
     result = call(
-        "find_station_selling_ship",
-        {"ship_name": "Anaconda", "reference_system": "Sol", "maximum_distance": 25.0},
+        "find_station",
+        {"reference_system": "Sol", "maximum_distance": 25.0, **arguments},
     )
 
     assert result.data == {
-        "ship_name": "Anaconda",
         "reference_system": "Sol",
         "maximum_distance": 25.0,
+        **expected,
     }
 
 
-def test_find_station_selling_module_tool_passes_arguments(monkeypatch):
-    class StubSpanshClient:
-        def get_module_prices_around_reference_system(self, **kwargs):
-            return kwargs
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        ({"search_for": "ships", "names": ["Anaconda"], "rating": "A"}, "only for modules"),
+        ({"search_for": "services", "names": ["Repair"], "module_class": 5}, "only for modules"),
+        ({"search_for": "ships", "names": []}, "at least one name"),
+        ({"search_for": "weapons", "names": ["Anaconda"]}, "search_for"),
+    ],
+)
+def test_find_station_rejects_invalid_arguments(monkeypatch, arguments, message):
+    monkeypatch.setattr(server, "spansh", RecordingSpanshClient())
 
-    monkeypatch.setattr(server, "spansh", StubSpanshClient())
+    with pytest.raises(ToolError, match=message):
+        call("find_station", {"reference_system": "Sol", **arguments})
 
-    result = call(
-        "find_station_selling_module",
-        {
-            "module_name": "Frame Shift Drive",
-            "reference_system": "Sol",
-            "module_class": 5,
-            "rating": "A",
-        },
-    )
 
-    assert result.data == {
-        "module_name": "Frame Shift Drive",
-        "reference_system": "Sol",
-        "maximum_distance": 50.0,
-        "module_class": 5,
-        "rating": "A",
-    }
+def test_get_supported_station_names_lists_ships_modules_and_services():
+    data = call("get_supported_station_names", {}).data
+
+    assert set(data) == {"ships", "modules", "services"}
+    assert "Anaconda" in data["ships"]
+    assert "Frame Shift Drive" in data["modules"]
+    assert "Repair" in data["services"]

@@ -305,23 +305,16 @@ def test_get_item_prices_rejects_none_parameters(parameter):
     http_client.post.assert_not_called()
 
 
-def test_ship_search_sends_ship_and_shipyard_freshness_filters():
-    http_client = Mock()
-    http_client.post.return_value.json.return_value = {"results": []}
+COMMON_STATION_FILTERS = {
+    "distance": {"min": "0", "max": "25"},
+    "type": {"value": ["Drake-Class Carrier"], "logic": "NOT"},
+    "has_large_pad": {"value": True},
+}
 
-    result = SpanshClient(client=http_client).get_ship_prices_around_reference_system(
-        "Anaconda", "Sol", maximum_distance=25
-    )
 
-    assert result == {"stations": []}
-    assert http_client.post.call_args.kwargs["json"] == {
-        "filters": {
-            "ships": [{"name": {"value": ["Anaconda"]}}],
-            "distance": {"min": "0", "max": "25"},
-            "type": {"value": ["Drake-Class Carrier"], "logic": "NOT"},
-            "shipyard_updated_at": {"comparison": "<=>", "value": ["now-7d", "now"]},
-            "has_large_pad": {"value": True},
-        },
+def search_payload(filters: dict) -> dict:
+    return {
+        "filters": filters,
         "sort": [{"distance": {"direction": "asc"}}],
         "size": 5,
         "page": 0,
@@ -329,84 +322,103 @@ def test_ship_search_sends_ship_and_shipyard_freshness_filters():
     }
 
 
-def test_ship_search_returns_only_the_requested_ship_with_its_price():
+def client_returning(results: list) -> tuple[Mock, SpanshClient]:
     http_client = Mock()
-    http_client.post.return_value.json.return_value = {
-        "results": [
+    http_client.post.return_value.json.return_value = {"results": results}
+    return http_client, SpanshClient(client=http_client)
+
+
+def test_ship_search_sends_one_entry_per_ship_and_shipyard_freshness():
+    http_client, client = client_returning([])
+
+    result = client.get_ship_prices_around_reference_system(
+        ["Anaconda", "Python"], "Sol", maximum_distance=25
+    )
+
+    assert result == {"stations": []}
+    assert http_client.post.call_args.kwargs["json"] == search_payload(
+        {
+            "ships": [
+                {"name": {"value": ["Anaconda"]}},
+                {"name": {"value": ["Python"]}},
+            ],
+            "shipyard_updated_at": {"comparison": "<=>", "value": ["now-7d", "now"]},
+            **COMMON_STATION_FILTERS,
+        }
+    )
+
+
+def test_ship_search_returns_only_stations_with_every_requested_ship():
+    def station(name, ships):
+        return {
+            "id": name,
+            "name": name,
+            "system_name": "Wolf 359",
+            "distance": 7.8,
+            "shipyard_updated_at": "2026-11-14T10:00:00Z",
+            "ships": [{"name": n, "price": p, "symbol": n} for n, p in ships],
+        }
+
+    _, client = client_returning(
+        [
+            station("Both", [("Anaconda", 146969450), ("Python", 56978000), ("Hauler", 52720)]),
+            station("Only Anaconda", [("Anaconda", 146969450)]),
+        ]
+    )
+
+    result = client.get_ship_prices_around_reference_system(["Anaconda", "Python"], "Sol")
+
+    assert result == {
+        "stations": [
             {
-                "id": "1",
-                "name": "Cayley Enterprise",
-                "system_name": "Wolf 359",
+                "name": "Both",
+                "system": "Wolf 359",
                 "distance": 7.8,
                 "shipyard_updated_at": "2026-11-14T10:00:00Z",
                 "ships": [
-                    {"name": "Python", "price": 56978000, "symbol": "Python"},
-                    {"name": "Anaconda", "price": 146969450, "symbol": "Anaconda"},
+                    {"name": "Anaconda", "price": 146969450},
+                    {"name": "Python", "price": 56978000},
                 ],
             }
         ]
     }
 
-    result = SpanshClient(client=http_client).get_ship_prices_around_reference_system(
-        "Anaconda", "Sol"
-    )
 
-    assert result == {
-        "stations": [
-            {
-                "name": "Cayley Enterprise",
-                "system": "Wolf 359",
-                "distance": 7.8,
-                "shipyard_updated_at": "2026-11-14T10:00:00Z",
-                "ship": {"name": "Anaconda", "price": 146969450},
-            }
-        ]
-    }
+def test_module_search_applies_shared_class_and_rating_to_every_module():
+    http_client, client = client_returning([])
 
-
-def test_module_search_sends_module_and_outfitting_freshness_filters():
-    http_client = Mock()
-    http_client.post.return_value.json.return_value = {"results": []}
-
-    result = SpanshClient(client=http_client).get_module_prices_around_reference_system(
-        "Frame Shift Drive", "Sol", maximum_distance=25, module_class=5, rating="A"
+    result = client.get_module_prices_around_reference_system(
+        ["Frame Shift Drive", "Power Plant"],
+        "Sol",
+        maximum_distance=25,
+        module_class=5,
+        rating="A",
     )
 
     assert result == {"stations": []}
-    assert http_client.post.call_args.kwargs["json"] == {
-        "filters": {
+    entry = {"class": {"value": ["5"]}, "rating": {"value": ["A"]}}
+    assert http_client.post.call_args.kwargs["json"] == search_payload(
+        {
             "modules": [
-                {
-                    "name": {"value": ["Frame Shift Drive"]},
-                    "class": {"value": ["5"]},
-                    "rating": {"value": ["A"]},
-                }
+                {"name": {"value": ["Frame Shift Drive"]}, **entry},
+                {"name": {"value": ["Power Plant"]}, **entry},
             ],
-            "distance": {"min": "0", "max": "25"},
-            "type": {"value": ["Drake-Class Carrier"], "logic": "NOT"},
             "outfitting_updated_at": {"comparison": "<=>", "value": ["now-7d", "now"]},
-            "has_large_pad": {"value": True},
-        },
-        "sort": [{"distance": {"direction": "asc"}}],
-        "size": 5,
-        "page": 0,
-        "reference_system": "Sol",
-    }
+            **COMMON_STATION_FILTERS,
+        }
+    )
 
 
 def test_module_search_omits_class_and_rating_when_not_given():
-    http_client = Mock()
-    http_client.post.return_value.json.return_value = {"results": []}
+    http_client, client = client_returning([])
 
-    SpanshClient(client=http_client).get_module_prices_around_reference_system(
-        "Frame Shift Drive", "Sol"
-    )
+    client.get_module_prices_around_reference_system(["Frame Shift Drive"], "Sol")
 
     sent = http_client.post.call_args.kwargs["json"]["filters"]["modules"]
     assert sent == [{"name": {"value": ["Frame Shift Drive"]}}]
 
 
-def test_module_search_returns_only_matching_modules_with_price():
+def test_module_search_returns_only_stations_with_every_module_and_matching_rows():
     def module(name, class_, rating, price):
         return {
             "name": name,
@@ -417,38 +429,128 @@ def test_module_search_returns_only_matching_modules_with_price():
             "price": price,
         }
 
-    http_client = Mock()
-    http_client.post.return_value.json.return_value = {
-        "results": [
-            {
-                "id": "1",
-                "name": "Cayley Enterprise",
-                "system_name": "Wolf 359",
-                "distance": 7.8,
-                "outfitting_updated_at": "2026-11-14T10:00:00Z",
-                "modules": [
+    def station(name, modules):
+        return {
+            "id": name,
+            "name": name,
+            "system_name": "Wolf 359",
+            "distance": 7.8,
+            "outfitting_updated_at": "2026-11-14T10:00:00Z",
+            "modules": modules,
+        }
+
+    _, client = client_returning(
+        [
+            station(
+                "Both",
+                [
                     module("Frame Shift Drive", 5, "A", 1_800_000),
                     module("Frame Shift Drive", 4, "A", 600_000),
                     module("Power Plant", 5, "A", 900_000),
                 ],
-            }
+            ),
+            station("Only drive", [module("Frame Shift Drive", 5, "A", 1_800_000)]),
         ]
-    }
+    )
 
-    result = SpanshClient(client=http_client).get_module_prices_around_reference_system(
-        "Frame Shift Drive", "Sol", module_class=5, rating="A"
+    result = client.get_module_prices_around_reference_system(
+        ["Frame Shift Drive", "Power Plant"], "Sol", module_class=5, rating="A"
     )
 
     assert result == {
         "stations": [
             {
-                "name": "Cayley Enterprise",
+                "name": "Both",
                 "system": "Wolf 359",
                 "distance": 7.8,
                 "outfitting_updated_at": "2026-11-14T10:00:00Z",
                 "modules": [
-                    {"name": "Frame Shift Drive", "class": 5, "rating": "A", "price": 1_800_000}
+                    {"name": "Frame Shift Drive", "class": 5, "rating": "A", "price": 1_800_000},
+                    {"name": "Power Plant", "class": 5, "rating": "A", "price": 900_000},
                 ],
             }
         ]
     }
+
+
+def test_service_search_sends_one_entry_per_service():
+    http_client, client = client_returning([])
+
+    result = client.get_service_stations_around_reference_system(
+        ["Repair", "Refuel"], "Sol", maximum_distance=25
+    )
+
+    assert result == {"stations": []}
+    assert http_client.post.call_args.kwargs["json"] == search_payload(
+        {
+            "services": [
+                {"name": {"value": ["Repair"]}},
+                {"name": {"value": ["Refuel"]}},
+            ],
+            **COMMON_STATION_FILTERS,
+        }
+    )
+
+
+def test_service_search_returns_stations_that_have_every_service():
+    _, client = client_returning(
+        [
+            {
+                "id": "1",
+                "name": "Both",
+                "system_name": "Wolf 359",
+                "distance": 7.8,
+                "distance_to_arrival": 450.5,
+                "services": [{"name": "Repair"}, {"name": "Refuel"}, {"name": "Market"}],
+            },
+            {
+                "id": "2",
+                "name": "Only repair",
+                "system_name": "Sirius",
+                "distance": 8.6,
+                "services": [{"name": "Repair"}],
+            },
+        ]
+    )
+
+    result = client.get_service_stations_around_reference_system(["Repair", "Refuel"], "Sol")
+
+    assert result == {
+        "stations": [
+            {"name": "Both", "system": "Wolf 359", "distance": 7.8, "distance_to_arrival": 450.5}
+        ]
+    }
+
+
+@pytest.mark.parametrize(
+    ("method", "names", "message"),
+    [
+        ("get_ship_prices_around_reference_system", ["Anaconda", "Spaceboat"], "Unknown ships: Spaceboat"),
+        ("get_module_prices_around_reference_system", ["Warp Core"], "Unknown modules: Warp Core"),
+        ("get_service_stations_around_reference_system", ["Repair", "Teleport"], "Unknown services: Teleport"),
+    ],
+)
+def test_station_searches_reject_unsupported_names_before_any_request(method, names, message):
+    http_client, client = client_returning([])
+
+    with pytest.raises(ValueError, match=message):
+        getattr(client, method)(names, "Sol")
+
+    http_client.post.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        "get_ship_prices_around_reference_system",
+        "get_module_prices_around_reference_system",
+        "get_service_stations_around_reference_system",
+    ],
+)
+def test_station_searches_require_at_least_one_name(method):
+    http_client, client = client_returning([])
+
+    with pytest.raises(ValueError, match="at least one name"):
+        getattr(client, method)([], "Sol")
+
+    http_client.post.assert_not_called()

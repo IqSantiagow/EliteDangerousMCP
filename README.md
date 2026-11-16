@@ -20,8 +20,8 @@ copilot for Elite Dangerous.
 | `get_supported_commodities` | Commodity names accepted by station searches |
 | `find_best_selling_station` | Nearby stations buying a commodity, sorted by sell price |
 | `find_best_buying_station` | Nearby stations selling a commodity, sorted by buy price |
-| `find_station_selling_ship` | Nearest stations whose shipyard sells a ship, with price and data age |
-| `find_station_selling_module` | Nearest stations whose outfitting sells a module (optional class and rating), with price and data age |
+| `get_supported_station_names` | Ship, module and service names accepted by `find_station` |
+| `find_station` | Nearest stations with all given ships, modules or services (e.g. Repair + Refuel) |
 | `compare_station_markets` | Profitable trades between two stations for a given cargo capacity |
 
 Systems are looked up by exact name (e.g. `Sol`, `Colonia`). Unknown systems
@@ -29,10 +29,12 @@ and systems without known coordinates return an error message. Station searches
 use exact commodity and system names, default to a 50 light-year radius and a
 500-unit demand or supply threshold, and return up to five stations.
 Station searches exclude fleet carriers and require a large landing pad and
-market data updated within the last seven days. Ship searches use the exact ship name (e.g. `Anaconda`), sort by distance and
-require shipyard data updated within the last seven days. Module searches use the exact module name (e.g. `Frame Shift Drive`), an
-optional class and rating, and require outfitting data updated within the last
-seven days. Market comparisons retrieve
+market data updated within the last seven days. `find_station` takes `search_for` (`ships`, `modules` or `services`) and a list of
+`names`; a station is returned only if it has all of them. Names are validated
+against the supported lists before any request. Results are sorted by distance;
+ship and module data must be updated within the last seven days, service data has
+no timestamp. For modules, an optional class and rating apply to every name.
+Market comparisons retrieve
 both markets from Spansh using exact system and station names and limit
 quantities by cargo capacity, source supply, and destination demand.
 

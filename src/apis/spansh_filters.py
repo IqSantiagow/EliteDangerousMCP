@@ -128,10 +128,15 @@ class ModuleFilter(BaseModel):
     rating: SimpleFilter | None = None
 
 
+class ServiceFilter(BaseModel):
+    name: SimpleFilter
+
+
 class StationFilter(BaseModel):
     market: list[MarketFilter] | None = None
     ships: list[ShipFilter] | None = None
     modules: list[ModuleFilter] | None = None
+    services: list[ServiceFilter] | None = None
     distance: DistanceFilter | None = None
     type: SimpleFilter | None = None
     market_updated_at: ComparisonFilter | None = None
@@ -141,9 +146,11 @@ class StationFilter(BaseModel):
 
     @model_validator(mode="after")
     def validate_exactly_one_search_target(self) -> Self:
-        targets = (self.market, self.ships, self.modules)
+        targets = (self.market, self.ships, self.modules, self.services)
         if sum(target is not None for target in targets) != 1:
-            raise ValueError("exactly one of market, ships or modules must be set")
+            raise ValueError(
+                "exactly one of market, ships, modules or services must be set"
+            )
         return self
 
 

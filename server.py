@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastmcp import FastMCP
 
 from src.apis.edsm import EdsmClient
@@ -96,52 +98,62 @@ def find_best_buying_station(
 
 
 @mcp.tool
-def find_station_selling_ship(
-    ship_name: str,
-    reference_system: str,
-    maximum_distance: float = 50.0,
-) -> dict:
-    """Find the nearest stations whose shipyard sells a ship.
+def get_supported_station_names() -> dict[str, list[str]]:
+    """Get the ship, module and service names accepted by `find_station`."""
+    from src.models.models import MODULES, SERVICES, SHIPS
 
-    Provide the exact ship name (e.g. "Anaconda") and reference system.
-    `maximum_distance` is the search radius in light-years. Results are sorted
-    by distance and include the ship price and when the shipyard data was last
-    updated. The search returns up to five stations with large pads and
-    shipyard data updated in the last seven days; fleet carriers are excluded.
-    An unknown ship name returns no stations.
-    """
-    return spansh.get_ship_prices_around_reference_system(
-        ship_name=ship_name,
-        reference_system=reference_system,
-        maximum_distance=maximum_distance,
-    )
+    return {"ships": list(SHIPS), "modules": list(MODULES), "services": list(SERVICES)}
 
 
 @mcp.tool
-def find_station_selling_module(
-    module_name: str,
+def find_station(
+    search_for: Literal["ships", "modules", "services"],
     reference_system: str,
+    names: list[str],
     maximum_distance: float = 50.0,
     module_class: int | None = None,
     rating: str | None = None,
 ) -> dict:
-    """Find the nearest stations whose outfitting sells a ship module.
+    """Find the nearest stations that have everything in `names`.
 
-    Provide the exact module name (e.g. "Frame Shift Drive") and reference
-    system. `module_class` (e.g. 5) and `rating` (e.g. "A") are optional; leave
-    them out for any class or rating. `maximum_distance` is the search radius in
-    light-years. Results are sorted by distance and list the matching modules
-    with prices and when the outfitting data was last updated. The search
-    returns up to five stations with large pads and outfitting data updated in
-    the last seven days; fleet carriers are excluded. An unknown module name
-    returns no stations.
+    `search_for` selects what `names` are: "ships" (a shipyard sells them),
+    "modules" (outfitting sells them) or "services" (e.g. ["Repair", "Refuel"]
+    for an emergency stop). A station is returned only if it has ALL the names.
+    Names must match `get_supported_station_names` exactly; unknown names fail
+    with an error. `module_class` (e.g. 5) and `rating` (e.g. "A") apply to every
+    module in `names` and are allowed only for "modules"; leave them out for any
+    class or rating.
+
+    Provide the exact reference system name; `maximum_distance` is the search
+    radius in light-years. Results are sorted by distance and include prices
+    (ships, modules) or `distance_to_arrival` (services), plus when the shipyard
+    or outfitting data was last updated. The search returns up to five stations
+    with large pads; fleet carriers are excluded. Ship and module data must be
+    updated within the last seven days; service data has no timestamp.
     """
-    return spansh.get_module_prices_around_reference_system(
-        module_name=module_name,
+    if not names:
+        raise ValueError("names: provide at least one name")
+    if search_for != "modules" and (module_class is not None or rating is not None):
+        raise ValueError("module_class and rating are allowed only for modules")
+
+    if search_for == "ships":
+        return spansh.get_ship_prices_around_reference_system(
+            ship_names=names,
+            reference_system=reference_system,
+            maximum_distance=maximum_distance,
+        )
+    if search_for == "modules":
+        return spansh.get_module_prices_around_reference_system(
+            module_names=names,
+            reference_system=reference_system,
+            maximum_distance=maximum_distance,
+            module_class=module_class,
+            rating=rating,
+        )
+    return spansh.get_service_stations_around_reference_system(
+        services=names,
         reference_system=reference_system,
         maximum_distance=maximum_distance,
-        module_class=module_class,
-        rating=rating,
     )
 
 
